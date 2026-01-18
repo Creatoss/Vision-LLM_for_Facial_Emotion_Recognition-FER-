@@ -127,25 +127,69 @@ class FaceAlignmentPreprocessor:
 
 @st.cache_resource
 def load_model(model_path):
-    """Load fine-tuned BLIP-2 model with LoRA adapters"""
+    """Load BLIP-2 with optional LoRA adapters; handles merged or adapter-only folders."""
     try:
         device = "cuda" if torch.cuda.is_available() else "cpu"
-        
-        # Load base model
-        processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b")
-        model = Blip2ForConditionalGeneration.from_pretrained(
-            "Salesforce/blip2-opt-2.7b",
-            device_map="auto",
-            torch_dtype=torch.float16
-        )
-        
-        # Load fine-tuned LoRA adapters
-        if os.path.exists(model_path):
-            model = PeftModel.from_pretrained(model, model_path)
-            return model, processor, device, True
+        offload_folder = os.path.join(tempfile.gettempdir(), "blip2_offload")
+        os.makedirs(offload_folder, exist_ok=True)
+        model_cache_dir = os.path.expanduser("~/.cache/huggingface/hub")
+
+        # Inspect model_path contents to decide how to load
+        adapter_config = os.path.join(model_path, "adapter_config.json")
+        adapter_model_bin = os.path.join(model_path, "adapter_model.bin")
+        adapter_model_sft = os.path.join(model_path, "adapter_model.safetensors")
+        merged_bin = os.path.join(model_path, "pytorch_model.bin")
+        merged_sft = os.path.join(model_path, "model.safetensors")
+
+        # Always load processor from the fine-tuned folder if available; fallback to base
+        if os.path.exists(os.path.join(model_path, "preprocessor_config.json")):
+            processor = Blip2Processor.from_pretrained(model_path)
         else:
-            return model, processor, device, False
-            
+            processor = Blip2Processor.from_pretrained("Salesforce/blip2-opt-2.7b", cache_dir=model_cache_dir)
+
+        # Case 1: Merged model (no PEFT needed)
+        if os.path.exists(merged_bin) or os.path.exists(merged_sft):
+            model = Blip2ForConditionalGeneration.from_pretrained(
+                model_path,
+                device_map="auto",
+                torch_dtype=torch.float16,
+                offload_folder=offload_folder,
+                offload_state_dict=True,
+                cache_dir=model_cache_dir,
+            )
+            return model, processor, device, True
+
+        # Case 2: LoRA adapters present
+        if os.path.exists(adapter_config) and (os.path.exists(adapter_model_bin) or os.path.exists(adapter_model_sft)):
+            base_model = Blip2ForConditionalGeneration.from_pretrained(
+                "Salesforce/blip2-opt-2.7b",
+                device_map="auto",
+                torch_dtype=torch.float16,
+                offload_folder=offload_folder,
+                offload_state_dict=True,
+                cache_dir=model_cache_dir,
+            )
+
+            import warnings
+            with warnings.catch_warnings():
+                warnings.filterwarnings("ignore", category=UserWarning)
+                model = PeftModel.from_pretrained(base_model, model_path)
+
+            # Attempt merge for faster inference; if merge fails, continue without error
+            try:
+                model = model.merge_and_unload()
+            except Exception:
+                pass
+
+            return model, processor, device, True
+
+        # Case 3: Path exists but no expected files
+        if os.path.exists(model_path):
+            st.error("Model path found but no adapter or merged model files detected.")
+        else:
+            st.error("Model path not found. Please set the correct folder in the sidebar.")
+        return None, None, None, False
+
     except Exception as e:
         st.error(f"Error loading model: {str(e)}")
         return None, None, None, False

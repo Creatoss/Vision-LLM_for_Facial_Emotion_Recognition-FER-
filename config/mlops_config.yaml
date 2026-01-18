@@ -1,0 +1,129 @@
+# MLOps Configuration for FER AI BLIP Project
+# This file is designed to be loaded by various MLOps tools (MLflow, DVC, Weights & Biases, etc.)
+
+project:
+  name: FER_AI_BLIP
+  description: "Facial Expression Recognition using BLIP Vision-Language Model"
+  version: "1.0"
+  author: "Ghaith"
+
+data:
+  source: "kaggle"
+  dataset_name: "dollyprajapati182/balanced-raf-db-dataset-7575-grayscale"
+  format: "grayscale_images"
+  total_images: 7575
+
+  splits:
+    train:
+      ratio: 0.6
+      size_expected: ~4500
+    val:
+      ratio: 0.2
+      size_expected: ~1500
+    test:
+      ratio: 0.2
+      size_expected: ~1500
+
+  classes:
+    anger: 0
+    disgust: 1
+    fear: 2
+    happiness: 3
+    neutral: 4
+    sadness: 5
+    surprise: 6
+
+  num_classes: 7
+  image_properties:
+    format: "grayscale"
+    channels: 1
+    preprocessing: "normalization, augmentation"
+
+model:
+  name: "BLIP"
+  type: "vision_language_model"
+  base_model: "Salesforce/blip-image-captioning-base"
+  task: "fine_tuning"
+
+  training:
+    learning_rate: 5e-5
+    batch_size: 32
+    num_epochs: 20
+    optimizer: "AdamW"
+    scheduler: "linear_with_warmup"
+    warmup_steps: 500
+    max_gradient_norm: 1.0
+
+  evaluation:
+    metrics:
+      - accuracy
+      - precision
+      - recall
+      - f1_score
+      - confusion_matrix
+    eval_strategy: "epoch"
+    save_strategy: "epoch"
+
+environment:
+  framework: "PyTorch"
+  huggingface_version: ">=4.25.0"
+  torch_version: ">=1.13.0"
+  cuda_required: true
+
+logging:
+  level: "INFO"
+  format: "json"
+  handlers:
+    - type: "file"
+      path: "logs/training.log"
+    - type: "console"
+      format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+mlops_integrations:
+  mlflow:
+    enabled: true
+    tracking_uri: "local"
+    experiment_name: "FER_AI_BLIP_Experiments"
+    tags:
+      task: "facial_expression_recognition"
+      model: "blip"
+
+  wandb:
+    enabled: false
+    project: "fer-ai-blip"
+    entity: "your-entity"
+
+  dvc:
+    enabled: true
+    remote: "s3" # or local, gdrive, etc.
+    data_dir: "data"
+    models_dir: "models"
+
+  tensorboard:
+    enabled: true
+    log_dir: "logs/tensorboard"
+
+artifact_storage:
+  models:
+    path: "models"
+    versioning: true
+
+  data:
+    path: "data"
+    versioning: true
+    track_with: "dvc"
+
+  metrics:
+    path: "metrics"
+    format: "json"
+
+deployment:
+  target_platforms:
+    - "huggingface_hub"
+    - "docker"
+    - "onnx"
+
+  model_serving:
+    framework: "FastAPI"
+    port: 8000
+    batch_size: 1

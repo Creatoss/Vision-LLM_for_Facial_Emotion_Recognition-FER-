@@ -1,0 +1,36 @@
+{
+  "model_id": "Salesforce/blip2-opt-2.7b",
+  "training_config": {
+    "batch_size": 4,
+    "gradient_accumulation_steps": 2,
+    "num_train_epochs": 3,
+    "learning_rate": 0.0002,
+    "warmup_steps": 100,
+    "weight_decay": 0.01,
+    "fp16": true
+  },
+  "training_history": {
+    "losses": [
+      0.3571330388971941,
+      0.5735941363126725,
+      1.1308423053702852
+    ],
+    "final_loss": 1.1308423053702852,
+    "best_loss": 0.3571330388971941,
+    "epochs_completed": 3
+  },
+  "dataset_info": {
+    "total_samples": 4348,
+    "json_file": "dataset_vision_llm_balanced.json",
+    "image_dir": "/content/drive/MyDrive/processed_data/aligned_faces"
+  },
+  "lora_config": {
+    "r": 16,
+    "lora_alpha": 32,
+    "target_modules": [
+      "q_proj",
+      "v_proj"
+    ],
+    "lora_dropout": 0.05
+  }
+}
